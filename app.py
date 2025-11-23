@@ -5,7 +5,12 @@ import numpy as np
 import pickle
 import json
 import os
+import requests
 from PIL import Image
+
+
+BACKEND_URL = "https://propertypulse-backend.onrender.com"
+
 
 # Set page configuration
 st.set_page_config(
@@ -14,6 +19,17 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+@st.cache_data
+def fetch_locations():
+    try:
+        resp = requests.get(f"{BACKEND_URL}/get_locations_names")
+        return resp.json().get("locations", [])
+    except:
+        return []
+
+columns = fetch_locations()
+
 
 # Display logo
 # Display logo (Left aligned near top)
@@ -26,41 +42,27 @@ if os.path.exists(logo_path):
     col_logo, col_empty = st.columns([0.2, 2])  # Left me space, right empty
     with col_logo:
         st.image(logo, width=200)   # Small clean logo size
-
-# Load the model and columns
-def load_model():
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    model_path = os.path.join(parent_dir, 'Model', 'Jaipur_real_estate_model.pickle')
-    columns_path = os.path.join(parent_dir, 'Model', 'columns.json')
-    
-    with open(model_path, 'rb') as f:
-        model = pickle.load(f)
-    
-    with open(columns_path, 'r') as f:
-        columns = json.load(f)['data_columns']
-    
-    return model, columns
-
-try:
-    model, columns = load_model()
-except Exception as e:
-    st.error(f"Error loading model: {str(e)}")
-    st.stop()
+        
+def get_predicted_price(area, bath, bhk, location):
+    try:
+        data = {
+            "sqft": area,
+            "bath": bath,
+            "BHK": bhk,
+            "location": location
+        }
+        res = requests.post(f"{BACKEND_URL}/get_estimated_price", data=data)
+        return res.json().get("estimated_price", None)
+    except:
+        return None
 
 # Function to calculate price per square foot for a location
-def get_price_per_sqft(model, columns, location, area=1000, bhk=2, bath=2):
-    try:
-        x = np.zeros(len(columns))
-        x[0] = area
-        x[1] = bath
-        x[2] = bhk
-        loc_index = columns.index(location)
-        x[loc_index] = 1
-        predicted_price = model.predict([x])[0]
-        return predicted_price / area
-    except Exception as e:
-        st.error(f"Error calculating price per sq ft: {str(e)}")
-        return 0
+def get_price_per_sqft(location, area=1000, bhk=2, bath=2):
+    price = get_predicted_price(area, bath, bhk, location)
+    if price:
+        return price / area
+    return 0
+
 
 def format_price(price):
     try:
@@ -68,6 +70,8 @@ def format_price(price):
         return f"₹{price:,.2f}"
     except (ValueError, TypeError):
         return "₹0.00"
+
+
 
 # Custom CSS
 st.markdown("""
@@ -235,17 +239,12 @@ with col1:
     if predict_button:
         try:
             # Prepare input data
-            x = np.zeros(len(columns))
-            x[0] = area
-            x[1] = bathrooms
-            x[2] = bedrooms
-            
-            # Set location
-            loc_index = columns.index(location)
-            x[loc_index] = 1
-            
-            # Make prediction
-            predicted_price = model.predict([x])[0]
+            predicted_price = get_predicted_price(area, bathrooms, bedrooms, location)
+
+            if predicted_price is None:
+                st.error("Backend error! Unable to fetch price.")
+                st.stop()
+
             
             # Calculate price per square foot
             price_per_sqft = predicted_price / area
@@ -339,7 +338,7 @@ with col1:
     col1a, col1b, col1c = st.columns(3)
     with col1a:
         # Calculate average price per sq ft for the selected location
-        avg_price_sqft = get_price_per_sqft(model, columns, location, area=1000, bhk=2, bath=2)
+        avg_price_sqft = get_price_per_sqft(location, area=1000, bhk=2, bath=2)
         st.markdown(f"""
             <div class='metric-card'>
                 <div class='metric-label'>Average Price/sq ft</div>
@@ -369,7 +368,7 @@ with col2:
     # Calculate price per sq ft for all locations
     locations_data = {}
     for loc in ["malviya nagar", "vaishali nagar", "civil lines", "bapu nagar", "mansarovar ext."]:
-        price_sqft = get_price_per_sqft(model, columns, loc, area=1000, bhk=2, bath=2)
+        price_sqft = get_price_per_sqft(loc)
         locations_data[loc.title()] = price_sqft
     
     fig = px.bar(
