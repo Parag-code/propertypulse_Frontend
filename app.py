@@ -9,7 +9,7 @@ import requests
 from PIL import Image
 
 
-BACKEND_URL = "https://propertypulse-backend.onrender.com"
+BACKEND_URL = "https://propertypulse-backend-m14j.onrender.com"
 
 
 # Set page configuration
@@ -418,3 +418,4 @@ st.markdown("""
         <p style='margin: 0.5rem 0 0;'>© 2024 PropertyPulse: Smart Real Estate Analytics</p>
     </div>
     """, unsafe_allow_html=True) 
+
